@@ -1,0 +1,151 @@
+HBase Demo steps
+===
+1) Clone and build the docker image:
+mkdir ~/demo && cd demo
+
+git clone https://github.com/humbertogaliza/hbase_tutorial.git .
+
+docker build -t dajobe/hbase .
+
+2) Start HBase Shell
+docker exec -it hbase-docker hbase shell
+
+3) Check HBase status: http://localhost:55000/master-status
+4) Check HBase Thrift status: http://localhost:55001/thrift.jsp
+5) Check HBase RESTServer status: http://localhost:55003/rest.jsp
+6) Check HBase server logs (in real time):
+id=58172ac65fe1
+export id
+docker attach $id
+
+*** MANIPULATING HBASE DATA ***
+
+//HBase Commands
+status
+version
+table_help
+whoami
+
+//Data Definition Language
+create 'employee', 'Name', 'ID', 'Designation', 'Salary', 'Department'
+
+//Verify created table
+list 
+disable 'employee'
+scan 'employee'
+describe 'employee'
+
+//or
+is_disabled 'employee'
+
+// To re-enable
+enable 'employee'
+
+//Let's try to create another table called 'employee2'
+create 'employee2', 'Name', 'ID', 'Designation', 'Salary', 'Department'
+
+//Disable multiple Tables
+disable_all 'e.*'
+
+//Create new table
+
+create 'student', 'name', 'age', 'course'
+
+//Insert data to the student table
+put 'student', 'Humberto', 'name:fullname', 'Humberto Galiza'
+put 'student', 'Humberto', 'age:presentage', '24'
+put 'student', 'Humberto', 'course:pursuing', 'Adv Databases'
+
+put 'student', 'Brendan', 'name:fullname', 'Brenday Tierney'
+put 'student', 'Brendan', 'age:presentage', '45'
+put 'student', 'Brendan', 'course:pursuing', 'Mechatronics'
+
+//Get information
+
+get 'student', 'Brendan'
+get 'student', 'Humberto'
+get 'student', 'Humberto', 'course'
+get 'student', 'Brendan', 'course'
+get 'student', 'Brendan', 'name'
+
+//Scan
+scan 'student'
+
+//Count
+count 'student'
+// count 'sample_data:tripdata', INTERVAL => 100000
+
+//Alter table
+alter 'student', NAME=>'age', VERSIONS=>5
+
+// Let's change the fullname of key 'Humberto' to something else, so we can observe the timestamp
+put 'student', 'Humberto', 'name:fullname', 'Humberto Silva'
+
+//Delete item
+delete 'student', 'Humberto', 'name:fullname'
+
+//Drop table student
+
+drop 'student'
+
+ERROR: Table student is enabled. Disable it first.
+
+For usage try 'help "drop"'
+
+Took 0.0182 seconds
+
+//We need to disable it first
+disable 'student'
+drop 'student'
+ 
+
+### MORE ADVANCED EXAMPLES - USING THE NEW YORK's BIKE TRIP DATA
+source: https://ride.citibikenyc.com/system-data
+
+// Get all rides whose values are '03 October 2021 10:37:41' 
+scan 'sample_data:tripdata', {FILTER => "ValueFilter(=,'binary:2021-10-03 10:37:41')"}
+
+
+ROW                                                COLUMN+CELL
+ 002DD53AA0BA5C29                                  column=ride_data:ended_at, timestamp=1636528035715, value=2021-10-03 10:37:41
+ 21B0EE71AE836CA2                                  column=ride_data:ended_at, timestamp=1636528008920, value=2021-10-03 10:37:41
+ 4F3F0924A5A74FDC                                  column=ride_data:started_at, timestamp=1636527995803, value=2021-10-03 10:37:41
+ CA9B886E5145C2B3                                  column=ride_data:ended_at, timestamp=1636528020810, value=2021-10-03 10:37:41
+ D32029F98758F76C                                  column=ride_data:ended_at, timestamp=1636528002830, value=2021-10-03 10:37:41
+5 row(s)
+Took 4.8845 seconds
+
+// Using Regex-based filters to get the values also work:
+scan 'sample_data:tripdata', {FILTER => "ValueFilter(=,'regexstring:2021-10-03 10:3')"}
+
+
+// Importing Java API classes for more advanced filters
+
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
+import org.apache.hadoop.hbase.filter.BinaryComparator;
+import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.Filter;
+
+scan 'sample_data:tripdata', { FILTER =>     
+   SingleColumnValueFilter.new( 
+         Bytes.toBytes('ride_data'),       
+         Bytes.toBytes('started_at'),  
+         CompareFilter::CompareOp.valueOf('EQUAL'), 
+         BinaryComparator.new(Bytes.toBytes('2021-10-03 10:37:41')))}
+
+
+// Combining multi-column is also easy with the SingleColumnValueFilter. Let's check how many rides we had between 2021-10-03 10:30:00 and 2021-10-03 10:39:59 by casual members:
+scan 'sample_data:tripdata', { FILTER => 
+	"SingleColumnValueFilter('ride_data','started_at',>=,'binary:2021-10-03 10:30:00') AND SingleColumnValueFilter('ride_data','ended_at',<=,'binary:2021-10-03 10:39:59') AND SingleColumnValueFilter('ride_data','member_casual',=,'binary:casual')",
+	COLUMNS=>['ride_data']}
+
+// Using a similar approach, let's check how many rides we had STARTING and ENDING at the "Pearl St & Hanover Square" from 2021-10-01 00:00:00 and 2021-10-01 23:59:59
+scan 'sample_data:tripdata', { FILTER => 
+	"SingleColumnValueFilter('ride_data','started_at',>=,'binary:2021-10-01 00:00:00') AND SingleColumnValueFilter('ride_data','ended_at',<=,'binary:2021-10-01 23:59:59') AND SingleColumnValueFilter('ride_data','start_station_name',=,'regexstring:Pearl St & Hanover Square') AND SingleColumnValueFilter('ride_data','end_station_name',=,'regexstring:Pearl St & Hanover Square')",
+	COLUMNS=>['ride_data']}
+
+//So, as we can see, there is and endless number of possibilities to use HBase filters :-)
+
+
+
